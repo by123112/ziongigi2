@@ -17,9 +17,12 @@ export default function RegisterSeller() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError('');
+    setSuccess('');
 
+    // 1. Sign up with Supabase Auth
     const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) {
       setError(signUpError.message);
@@ -28,25 +31,30 @@ export default function RegisterSeller() {
     }
 
     const userId = data.user?.id;
-    if (userId) {
-      const { error: profileError } = await supabase.from('profiles').insert([
-        {
-          id: userId,
-          full_name: businessName,
-          phone,
-          role: 'seller',
-          verification_status: 'pending', // will be updated after completing verification
-          payout_details: { taxId, website },
-          // verification_docs will be added later
-        },
-      ]);
-      if (profileError) {
-        console.error(profileError);
-        setError('Account created but profile error. Contact support.');
-      } else {
-        setSuccess('Account created! Please verify your email, then log in and complete your verification details.');
-        setTimeout(() => router.push('/login'), 5000);
-      }
+    if (!userId) {
+      setError('User ID missing. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Insert profile – only columns that exist in your profiles table
+    const { error: profileError } = await supabase.from('profiles').insert([
+      {
+        id: userId,
+        full_name: businessName,
+        phone: phone,
+        role: 'seller',
+        verification_status: 'pending',   // admin must approve later
+        payout_details: { taxId, website }, // optional, stored as JSONB
+      },
+    ]);
+
+    if (profileError) {
+      console.error('Profile insert error:', profileError);
+      setError(`Profile error: ${profileError.message}. Please contact support.`);
+    } else {
+      setSuccess('Seller account created! Please verify your email. Your application will be reviewed by admin before you can list products.');
+      setTimeout(() => router.push('/login'), 5000);
     }
     setLoading(false);
   };
@@ -89,7 +97,7 @@ export default function RegisterSeller() {
             <input type="url" className="input" placeholder="https://yourstore.com" value={website} onChange={e => setWebsite(e.target.value)} />
           </div>
           <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-            ⚠️ After email verification, you must complete additional verification (ID, payout details) before listing products.
+            ⚠️ After email verification, your account will be reviewed by admin. You can only list products after approval.
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? 'Creating account...' : 'Register as Seller'}
