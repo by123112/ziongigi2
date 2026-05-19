@@ -3,123 +3,158 @@ import ProtectedRoute from '../../components/ProtectedRoute';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 export default function SellerDashboard() {
+  const router = useRouter();
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [verificationStatus, setVerificationStatus] = useState(null);
-  const [stats, setStats] = useState({ products: 0, sales: 0, revenue: 0, pending: 0 });
-  const [recentOrders, setRecentOrders] = useState([]);
+  const [idFile, setIdFile] = useState(null);
+  const [selfieFile, setSelfieFile] = useState(null);
+  const [payoutMethod, setPayoutMethod] = useState('bank');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [paypalEmail, setPaypalEmail] = useState('');
+  const [mobileMoney, setMobileMoney] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const fetchSellerData = async () => {
+    const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
+      if (user) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        setProfile(data);
       }
-
-      // Get profile and verification status
-      const { data: profile } = await supabase.from('profiles').select('verification_status').eq('id', user.id).single();
-      setVerificationStatus(profile?.verification_status);
-
-      // If not verified, stop further loading
-      if (profile?.verification_status !== 'verified') {
-        setLoading(false);
-        return;
-      }
-
-      // Fetch seller stats
-      const { data: products } = await supabase.from('products').select('id, status').eq('seller_id', user.id);
-      const productIds = products?.map(p => p.id) || [];
-      const { data: orders } = await supabase.from('orders').select('*, products(price_usd)').in('product_id', productIds);
-      const totalRevenue = orders?.reduce((sum, o) => sum + (o.products?.price_usd || 0), 0) || 0;
-      setStats({
-        products: products?.length || 0,
-        sales: orders?.length || 0,
-        revenue: totalRevenue,
-        pending: products?.filter(p => p.status === 'pending').length || 0,
-      });
-      setRecentOrders(orders?.slice(0, 5) || []);
       setLoading(false);
     };
-
-    fetchSellerData();
+    fetchProfile();
   }, []);
 
-  // Block unverified sellers
-  if (!loading && verificationStatus !== 'verified') {
+  // If email was just verified, show a welcome message
+  useEffect(() => {
+    if (router.query.verified === 'true') {
+      setMessage('✅ Email verified! Please complete your seller verification to start listing products.');
+    }
+  }, [router.query]);
+
+  const uploadFile = async (file, folder) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}-${folder}-${Date.now()}.${fileExt}`;
+    const { error } = await supabase.storage.from('verification').upload(fileName, file);
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('verification').getPublicUrl(fileName);
+    return publicUrl;
+  };
+
+  const handleSubmitVerification = async () => {
+    if (!idFile) {
+      alert('Please upload a government ID.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const idUrl = await uploadFile(idFile, 'id');
+      const selfieUrl = selfieFile ? await uploadFile(selfieFile, 'selfie') : null;
+
+      // Prepare payout details based on method
+      let payoutDetails = {};
+      if (payoutMethod === 'bank') payoutDetails = { bankName, accountNumber };
+      else if (payoutMethod === 'paypal') payoutDetails = { paypalEmail };
+      else if (payoutMethod === 'mobile') payoutDetails = { mobileMoney };
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from('profiles').update({
+        verification_docs: { id_url: idUrl, selfie_url: selfieUrl },
+        payout_details: payoutDetails,
+        verification_status: 'pending', // admin will review
+        full_name: profile?.full_name || 'Seller', // keep existing name
+        phone: profile?.phone || '',
+      }).eq('id', user.id);
+
+      if (error) throw error;
+      setMessage('Verification submitted. Admin will review within 48 hours.');
+      setProfile({ ...profile, verification_status: 'pending' });
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed: ' + err.message);
+    }
+    setUploading(false);
+  };
+
+  if (loading) return <div className="p-10 text-center">Loading...</div>;
+  if (!profile) return <div className="p-10 text-center">Profile not found.</div>;
+
+  // Case 1: Not yet verified (pending admin approval after submission)
+  if (profile.verification_status === 'pending' && profile.verification_docs?.id_url) {
     return (
       <ProtectedRoute allowedRoles={['seller']}>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="text-5xl mb-4">🔒</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Verification Required</h2>
-            <p className="text-gray-600 mb-6">You must complete your identity verification before you can list products and access your seller dashboard.</p>
-            <Link href="/seller/complete-verification" className="btn-primary inline-block">Complete Verification →</Link>
-            <div className="mt-4 text-sm text-gray-500">
-              Already submitted? Our team will review within 48 hours.
-            </div>
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <div className="bg-yellow-50 p-4 rounded-lg mb-4">
+            ⏳ Your verification is pending. We'll notify you once approved.
           </div>
+          <Link href="/" className="text-indigo-600">Go to Home</Link>
         </div>
       </ProtectedRoute>
     );
   }
 
-  if (loading) {
+  // Case 2: Verified (admin approved)
+  if (profile.verification_status === 'verified') {
     return (
       <ProtectedRoute allowedRoles={['seller']}>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
-
-  return (
-    <ProtectedRoute allowedRoles={['seller']}>
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-800 mb-6">Seller Dashboard</h1>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-indigo-500">
-              <p className="text-gray-500">Total Products</p>
-              <p className="text-2xl font-bold">{stats.products}</p>
+        <div className="min-h-screen bg-gray-50 py-8 px-4">
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-3xl font-bold mb-6">Seller Dashboard</h1>
+            <div className="bg-green-100 p-4 rounded-lg mb-6">
+              ✅ Your account is verified. You can now list products.
             </div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-green-500">
-              <p className="text-gray-500">Sales</p>
-              <p className="text-2xl font-bold">{stats.sales}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-yellow-500">
-              <p className="text-gray-500">Revenue</p>
-              <p className="text-2xl font-bold">${stats.revenue.toFixed(2)}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-red-500">
-              <p className="text-gray-500">Pending Approval</p>
-              <p className="text-2xl font-bold">{stats.pending}</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Recent Orders</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="border-b">
-                  <tr><th className="text-left py-2">Product</th><th>Amount</th><th>Date</th></tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map(order => (
-                    <tr key={order.id} className="border-b">
-                      <td className="py-2">{order.products?.title || 'N/A'}</td>
-                      <td>${order.products?.price_usd}</td>
-                      <td>{new Date(order.created_at).toDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="mt-6 text-center">
             <Link href="/seller/products" className="btn-primary">Manage Products</Link>
           </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  // Case 3: New seller (no verification submitted yet)
+  return (
+    <ProtectedRoute allowedRoles={['seller']}>
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-4">Complete Your Seller Verification</h1>
+        {message && <div className="bg-blue-100 p-3 rounded mb-4">{message}</div>}
+        <div className="bg-white p-6 rounded-xl shadow space-y-4">
+          <div>
+            <label className="block font-medium">Government ID (passport/driver's license)</label>
+            <input type="file" accept="image/*" onChange={e => setIdFile(e.target.files[0])} required />
+          </div>
+          <div>
+            <label className="block font-medium">Selfie with ID (recommended)</label>
+            <input type="file" accept="image/*" onChange={e => setSelfieFile(e.target.files[0])} />
+          </div>
+          <div className="border-t pt-4">
+            <h3 className="font-semibold mb-2">Payout Details</h3>
+            <select className="input mb-2" value={payoutMethod} onChange={e => setPayoutMethod(e.target.value)}>
+              <option value="bank">Bank Transfer</option>
+              <option value="paypal">PayPal</option>
+              <option value="mobile">Mobile Money</option>
+            </select>
+            {payoutMethod === 'bank' && (
+              <>
+                <input type="text" placeholder="Bank Name" className="input mb-2" value={bankName} onChange={e => setBankName(e.target.value)} required />
+                <input type="text" placeholder="Account Number" className="input" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required />
+              </>
+            )}
+            {payoutMethod === 'paypal' && (
+              <input type="email" placeholder="PayPal Email" className="input" value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} required />
+            )}
+            {payoutMethod === 'mobile' && (
+              <input type="text" placeholder="Mobile Money Number" className="input" value={mobileMoney} onChange={e => setMobileMoney(e.target.value)} required />
+            )}
+          </div>
+          <button onClick={handleSubmitVerification} disabled={uploading} className="btn-primary w-full">
+            {uploading ? 'Submitting...' : 'Submit Verification'}
+          </button>
         </div>
       </div>
     </ProtectedRoute>
