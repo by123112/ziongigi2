@@ -23,7 +23,11 @@ export default function RegisterSeller() {
     setSuccess('');
 
     // 1. Sign up with Supabase Auth
-    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
     if (signUpError) {
       setError(signUpError.message);
       setLoading(false);
@@ -37,25 +41,10 @@ export default function RegisterSeller() {
       return;
     }
 
-    // 2. Insert profile – only columns that exist in your profiles table
-    const { error: profileError } = await supabase.from('profiles').insert([
-      {
-        id: userId,
-        full_name: businessName,
-        phone: phone,
-        role: 'seller',
-        verification_status: 'pending',   // admin must approve later
-        payout_details: { taxId, website }, // optional, stored as JSONB
-      },
-    ]);
-
-    if (profileError) {
-      console.error('Profile insert error:', profileError);
-      setError(`Profile error: ${profileError.message}. Please contact support.`);
-    } else {
-      setSuccess('Seller account created! Please verify your email. Your application will be reviewed by admin before you can list products.');
-      setTimeout(() => router.push('/login'), 5000);
-    }
+    // 2. Profile will be auto-created by database trigger.
+    //    After email verification, redirect to login.
+    setSuccess('Seller account created! Please verify your email. After verification, log in to complete your seller profile.');
+    setTimeout(() => router.push('/login'), 5000);
     setLoading(false);
   };
 
@@ -97,7 +86,7 @@ export default function RegisterSeller() {
             <input type="url" className="input" placeholder="https://yourstore.com" value={website} onChange={e => setWebsite(e.target.value)} />
           </div>
           <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-            ⚠️ After email verification, your account will be reviewed by admin. You can only list products after approval.
+            ⚠️ After email verification, log in and complete your seller profile to start listing products.
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? 'Creating account...' : 'Register as Seller'}
