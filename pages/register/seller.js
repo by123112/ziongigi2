@@ -4,12 +4,8 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 
 export default function RegisterSeller() {
-  const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [taxId, setTaxId] = useState('');
-  const [website, setWebsite] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -22,7 +18,7 @@ export default function RegisterSeller() {
     setError('');
     setSuccess('');
 
-    // 1. Sign up with Supabase Auth
+    // Only sign up – profile will be created automatically by the database trigger
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -30,21 +26,14 @@ export default function RegisterSeller() {
 
     if (signUpError) {
       setError(signUpError.message);
-      setLoading(false);
-      return;
+    } else {
+      setSuccess('Seller account created! Please check your email to confirm. After confirmation, log in to complete your seller verification.');
+      // Clear form fields (optional)
+      setEmail('');
+      setPassword('');
+      // Redirect to login after 5 seconds
+      setTimeout(() => router.push('/login'), 5000);
     }
-
-    const userId = data.user?.id;
-    if (!userId) {
-      setError('User ID missing. Please try again.');
-      setLoading(false);
-      return;
-    }
-
-    // 2. Profile will be auto-created by database trigger.
-    //    After email verification, redirect to login.
-    setSuccess('Seller account created! Please verify your email. After verification, log in to complete your seller profile.');
-    setTimeout(() => router.push('/login'), 5000);
     setLoading(false);
   };
 
@@ -62,31 +51,15 @@ export default function RegisterSeller() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Business / Display name *</label>
-            <input type="text" required className="input" placeholder="Your Brand Name" value={businessName} onChange={e => setBusinessName(e.target.value)} />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email address *</label>
             <input type="email" required className="input" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone number *</label>
-            <input type="tel" required className="input" placeholder="+234 123 456 7890" value={phone} onChange={e => setPhone(e.target.value)} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
             <input type="password" required minLength={6} className="input" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tax ID / VAT (optional)</label>
-            <input type="text" className="input" placeholder="e.g., VAT number" value={taxId} onChange={e => setTaxId(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Website (optional)</label>
-            <input type="url" className="input" placeholder="https://yourstore.com" value={website} onChange={e => setWebsite(e.target.value)} />
-          </div>
           <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-            ⚠️ After email verification, log in and complete your seller profile to start listing products.
+            ⚠️ After email confirmation, log in to complete your seller verification (ID upload, payout details).
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? 'Creating account...' : 'Register as Seller'}
