@@ -4,8 +4,12 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 
 export default function RegisterSeller() {
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -13,25 +17,44 @@ export default function RegisterSeller() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    if (!acceptedTerms) {
+      setError('You must accept the Terms & Policies.');
+      return;
+    }
     setLoading(true);
     setError('');
-    setSuccess('');
 
-    // Only sign up – profile will be created automatically by the database trigger
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
+    // 1. Sign up with Supabase Auth
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) {
       setError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+
+    const userId = data.user?.id;
+    if (!userId) {
+      setError('User ID missing. Try again.');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Insert profile with basic info (trigger will also create row, but we upsert)
+    const { error: profileError } = await supabase.from('profiles').upsert({
+      id: userId,
+      full_name: fullName,
+      username,
+      phone,
+      role: 'seller',
+      verification_status: 'pending',
+      legal_accepted: true,
+    }, { onConflict: 'id' });
+
+    if (profileError) {
+      console.error(profileError);
+      setError('Account created but profile error. Contact support.');
     } else {
-      setSuccess('Seller account created! Please check your email to confirm. After confirmation, log in to complete your seller verification.');
-      // Clear form fields (optional)
-      setEmail('');
-      setPassword('');
-      // Redirect to login after 5 seconds
+      setSuccess('Account created! Please verify your email. After verification, log in to complete your seller profile.');
       setTimeout(() => router.push('/login'), 5000);
     }
     setLoading(false);
@@ -40,35 +63,25 @@ export default function RegisterSeller() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-600">Ziongigi</h1>
-          <h2 className="text-xl font-semibold mt-2">Become a Seller</h2>
-          <p className="text-gray-500 text-sm mt-1">Reach global customers and sell your digital products</p>
-        </div>
-
-        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{error}</div>}
-        {success && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4">{success}</div>}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email address *</label>
-            <input type="email" required className="input" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+        <h1 className="text-3xl font-bold text-center text-indigo-600">Ziongigi</h1>
+        <h2 className="text-xl font-semibold text-center mt-2">Become a Seller</h2>
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm my-4">{error}</div>}
+        {success && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm my-4">{success}</div>}
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          <input type="text" placeholder="Full Name *" className="input" value={fullName} onChange={e => setFullName(e.target.value)} required />
+          <input type="text" placeholder="Username *" className="input" value={username} onChange={e => setUsername(e.target.value)} required />
+          <input type="email" placeholder="Email Address *" className="input" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input type="tel" placeholder="Phone Number *" className="input" value={phone} onChange={e => setPhone(e.target.value)} required />
+          <input type="password" placeholder="Password *" className="input" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+          <div className="flex items-start">
+            <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
+            <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
+              I agree to the <a href="/terms" target="_blank" className="text-indigo-600">Terms of Service</a>, <a href="/privacy" target="_blank" className="text-indigo-600">Privacy Policy</a>, <a href="/refund" target="_blank" className="text-indigo-600">Refund Policy</a> and <a href="/seller-agreement" target="_blank" className="text-indigo-600">Seller Agreement</a>
+            </label>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-            <input type="password" required minLength={6} className="input" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
-          </div>
-          <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-            ⚠️ After email confirmation, log in to complete your seller verification (ID upload, payout details).
-          </div>
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? 'Creating account...' : 'Register as Seller'}
-          </button>
+          <button type="submit" disabled={loading} className="btn-primary w-full">Register</button>
         </form>
-
-        <p className="text-center text-sm text-gray-600 mt-6">
-          Already selling? <Link href="/login" className="text-indigo-600 hover:underline">Log in</Link>
-        </p>
+        <p className="text-center text-sm mt-4">Already have an account? <Link href="/login" className="text-indigo-600">Log in</Link></p>
       </div>
     </div>
   );
