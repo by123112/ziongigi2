@@ -1,23 +1,37 @@
-// pages/seller/dashboard.js
-import ProtectedRoute from '../../components/ProtectedRoute';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
+import ProtectedRoute from '../../components/ProtectedRoute';
 
 export default function SellerDashboard() {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('basic');
+  const [message, setMessage] = useState('');
+
+  // Phone OTP
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [verifyingPhone, setVerifyingPhone] = useState(false);
+
+  // Address
+  const [country, setCountry] = useState('');
+  const [state, setState] = useState('');
+  const [city, setCity] = useState('');
+  const [address, setAddress] = useState('');
+
+  // Documents
   const [idFile, setIdFile] = useState(null);
   const [selfieFile, setSelfieFile] = useState(null);
-  const [payoutMethod, setPayoutMethod] = useState('bank');
+  const [uploading, setUploading] = useState(false);
+
+  // Withdrawal method
+  const [withdrawalMethod, setWithdrawalMethod] = useState('bank');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [paypalEmail, setPaypalEmail] = useState('');
   const [mobileMoney, setMobileMoney] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -25,137 +39,189 @@ export default function SellerDashboard() {
       if (user) {
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         setProfile(data);
+        if (data?.country) setCountry(data.country);
+        if (data?.state) setState(data.state);
+        if (data?.city) setCity(data.city);
+        if (data?.address) setAddress(data.address);
+        if (data?.withdrawal_method) {
+          // prefill withdrawal method if exists
+        }
       }
       setLoading(false);
     };
     fetchProfile();
   }, []);
 
-  // If email was just verified, show a welcome message
-  useEffect(() => {
-    if (router.query.verified === 'true') {
-      setMessage('✅ Email verified! Please complete your seller verification to start listing products.');
-    }
-  }, [router.query]);
+  // Send phone OTP
+  const sendPhoneOtp = async () => {
+    // This requires a backend endpoint. For demo, we'll simulate.
+    // In production, use Twilio or similar.
+    alert('Simulated: OTP sent to ' + profile?.phone);
+    setPhoneOtpSent(true);
+  };
 
-  const uploadFile = async (file, folder) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${user.id}-${folder}-${Date.now()}.${fileExt}`;
+  const verifyPhoneOtp = async () => {
+    setVerifyingPhone(true);
+    // Simulate verification – in real app, call your API
+    if (phoneOtpCode === '123456') { // demo code
+      await supabase.from('profiles').update({ phone_verified: true }).eq('id', profile.id);
+      setProfile({ ...profile, phone_verified: true });
+      setMessage('Phone verified!');
+    } else {
+      alert('Invalid OTP (demo uses 123456)');
+    }
+    setVerifyingPhone(false);
+  };
+
+  const saveAddress = async () => {
+    const { error } = await supabase.from('profiles').update({
+      country, state, city, address
+    }).eq('id', profile.id);
+    if (error) alert('Error saving address');
+    else {
+      setProfile({ ...profile, country, state, city, address });
+      setMessage('Address saved');
+    }
+  };
+
+  const uploadFile = async (file, type) => {
+    const fileName = `${profile.id}-${type}-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('verification').upload(fileName, file);
     if (error) throw error;
     const { data: { publicUrl } } = supabase.storage.from('verification').getPublicUrl(fileName);
     return publicUrl;
   };
 
-  const handleSubmitVerification = async () => {
+  const submitDocuments = async () => {
     if (!idFile) {
-      alert('Please upload a government ID.');
+      alert('Please upload Government ID');
       return;
     }
     setUploading(true);
     try {
       const idUrl = await uploadFile(idFile, 'id');
       const selfieUrl = selfieFile ? await uploadFile(selfieFile, 'selfie') : null;
-
-      // Prepare payout details based on method
-      let payoutDetails = {};
-      if (payoutMethod === 'bank') payoutDetails = { bankName, accountNumber };
-      else if (payoutMethod === 'paypal') payoutDetails = { paypalEmail };
-      else if (payoutMethod === 'mobile') payoutDetails = { mobileMoney };
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('profiles').update({
-        verification_docs: { id_url: idUrl, selfie_url: selfieUrl },
-        payout_details: payoutDetails,
-        verification_status: 'pending', // admin will review
-        full_name: profile?.full_name || 'Seller', // keep existing name
-        phone: profile?.phone || '',
-      }).eq('id', user.id);
-
-      if (error) throw error;
-      setMessage('Verification submitted. Admin will review within 48 hours.');
-      setProfile({ ...profile, verification_status: 'pending' });
+      await supabase.from('profiles').update({
+        verification_docs: { id_url: idUrl, selfie_url: selfieUrl }
+      }).eq('id', profile.id);
+      setMessage('Documents uploaded. Admin will review.');
     } catch (err) {
-      console.error(err);
       alert('Upload failed: ' + err.message);
     }
     setUploading(false);
   };
 
+  const saveWithdrawal = async () => {
+    let details = {};
+    if (withdrawalMethod === 'bank') details = { bankName, accountNumber };
+    else if (withdrawalMethod === 'paypal') details = { paypalEmail };
+    else details = { mobileMoney };
+    const { error } = await supabase.from('profiles').update({
+      withdrawal_method: { method: withdrawalMethod, details }
+    }).eq('id', profile.id);
+    if (error) alert('Error saving withdrawal method');
+    else {
+      setMessage('Withdrawal method saved');
+      setProfile({ ...profile, withdrawal_method: { method: withdrawalMethod, details } });
+    }
+  };
+
   if (loading) return <div className="p-10 text-center">Loading...</div>;
   if (!profile) return <div className="p-10 text-center">Profile not found.</div>;
 
-  // Case 1: Not yet verified (pending admin approval after submission)
-  if (profile.verification_status === 'pending' && profile.verification_docs?.id_url) {
+  // Admin approval check
+  if (profile.verification_status === 'approved') {
     return (
       <ProtectedRoute allowedRoles={['seller']}>
-        <div className="max-w-2xl mx-auto px-4 py-8">
-          <div className="bg-yellow-50 p-4 rounded-lg mb-4">
-            ⏳ Your verification is pending. We'll notify you once approved.
-          </div>
-          <Link href="/" className="text-indigo-600">Go to Home</Link>
+        <div className="p-8">
+          <h1 className="text-3xl font-bold">Seller Dashboard</h1>
+          <p className="mt-2">Your account is verified. You can now upload products.</p>
+          <Link href="/seller/products" className="btn-primary mt-4 inline-block">Manage Products</Link>
         </div>
       </ProtectedRoute>
     );
   }
 
-  // Case 2: Verified (admin approved)
-  if (profile.verification_status === 'verified') {
-    return (
-      <ProtectedRoute allowedRoles={['seller']}>
-        <div className="min-h-screen bg-gray-50 py-8 px-4">
-          <div className="max-w-7xl mx-auto">
-            <h1 className="text-3xl font-bold mb-6">Seller Dashboard</h1>
-            <div className="bg-green-100 p-4 rounded-lg mb-6">
-              ✅ Your account is verified. You can now list products.
-            </div>
-            <Link href="/seller/products" className="btn-primary">Manage Products</Link>
-          </div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
-
-  // Case 3: New seller (no verification submitted yet)
   return (
     <ProtectedRoute allowedRoles={['seller']}>
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-4">Complete Your Seller Verification</h1>
-        {message && <div className="bg-blue-100 p-3 rounded mb-4">{message}</div>}
-        <div className="bg-white p-6 rounded-xl shadow space-y-4">
-          <div>
-            <label className="block font-medium">Government ID (passport/driver's license)</label>
-            <input type="file" accept="image/*" onChange={e => setIdFile(e.target.files[0])} required />
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-2xl font-bold mb-4">Seller Verification</h1>
+        {message && <div className="bg-green-100 p-3 rounded mb-4">{message}</div>}
+        <div className="flex border-b mb-6">
+          <button className={`px-4 py-2 ${activeTab === 'basic' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('basic')}>Basic Info</button>
+          <button className={`px-4 py-2 ${activeTab === 'phone' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('phone')}>Phone Verification</button>
+          <button className={`px-4 py-2 ${activeTab === 'address' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('address')}>Address</button>
+          <button className={`px-4 py-2 ${activeTab === 'docs' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('docs')}>ID & Selfie</button>
+          <button className={`px-4 py-2 ${activeTab === 'withdrawal' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('withdrawal')}>Withdrawal Method</button>
+        </div>
+
+        {activeTab === 'basic' && (
+          <div className="bg-white p-6 rounded-xl shadow">
+            <p><strong>Name:</strong> {profile.full_name}</p>
+            <p><strong>Username:</strong> {profile.username}</p>
+            <p><strong>Email:</strong> {profile.email}</p>
+            <p><strong>Phone:</strong> {profile.phone}</p>
+            <p><strong>Email Verified:</strong> {profile.email_confirmed_at ? 'Yes' : 'No – check your inbox'}</p>
           </div>
-          <div>
-            <label className="block font-medium">Selfie with ID (recommended)</label>
-            <input type="file" accept="image/*" onChange={e => setSelfieFile(e.target.files[0])} />
+        )}
+
+        {activeTab === 'phone' && (
+          <div className="bg-white p-6 rounded-xl shadow">
+            <p>Phone: {profile.phone} {profile.phone_verified ? '(verified)' : ''}</p>
+            {!profile.phone_verified && (
+              <div className="mt-2">
+                <button onClick={sendPhoneOtp} className="btn-secondary">Send OTP</button>
+                {phoneOtpSent && (
+                  <div className="mt-2">
+                    <input type="text" placeholder="Enter 6-digit OTP" className="input" value={phoneOtpCode} onChange={e => setPhoneOtpCode(e.target.value)} />
+                    <button onClick={verifyPhoneOtp} disabled={verifyingPhone} className="btn-primary mt-2">Verify</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="border-t pt-4">
-            <h3 className="font-semibold mb-2">Payout Details</h3>
-            <select className="input mb-2" value={payoutMethod} onChange={e => setPayoutMethod(e.target.value)}>
+        )}
+
+        {activeTab === 'address' && (
+          <div className="bg-white p-6 rounded-xl shadow space-y-3">
+            <input placeholder="Country" className="input" value={country} onChange={e => setCountry(e.target.value)} />
+            <input placeholder="State/Province" className="input" value={state} onChange={e => setState(e.target.value)} />
+            <input placeholder="City" className="input" value={city} onChange={e => setCity(e.target.value)} />
+            <input placeholder="Street Address" className="input" value={address} onChange={e => setAddress(e.target.value)} />
+            <button onClick={saveAddress} className="btn-primary">Save Address</button>
+          </div>
+        )}
+
+        {activeTab === 'docs' && (
+          <div className="bg-white p-6 rounded-xl shadow space-y-3">
+            <div><label>Government ID (passport/driver's license)</label><input type="file" accept="image/*" onChange={e => setIdFile(e.target.files[0])} /></div>
+            <div><label>Selfie with ID</label><input type="file" accept="image/*" onChange={e => setSelfieFile(e.target.files[0])} /></div>
+            <button onClick={submitDocuments} disabled={uploading} className="btn-primary">{uploading ? 'Uploading...' : 'Submit Documents'}</button>
+          </div>
+        )}
+
+        {activeTab === 'withdrawal' && (
+          <div className="bg-white p-6 rounded-xl shadow space-y-3">
+            <select className="input" value={withdrawalMethod} onChange={e => setWithdrawalMethod(e.target.value)}>
               <option value="bank">Bank Transfer</option>
               <option value="paypal">PayPal</option>
               <option value="mobile">Mobile Money</option>
             </select>
-            {payoutMethod === 'bank' && (
+            {withdrawalMethod === 'bank' && (
               <>
-                <input type="text" placeholder="Bank Name" className="input mb-2" value={bankName} onChange={e => setBankName(e.target.value)} required />
-                <input type="text" placeholder="Account Number" className="input" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} required />
+                <input placeholder="Bank Name" className="input" value={bankName} onChange={e => setBankName(e.target.value)} />
+                <input placeholder="Account Number" className="input" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} />
               </>
             )}
-            {payoutMethod === 'paypal' && (
-              <input type="email" placeholder="PayPal Email" className="input" value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} required />
+            {withdrawalMethod === 'paypal' && (
+              <input placeholder="PayPal Email" className="input" value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} />
             )}
-            {payoutMethod === 'mobile' && (
-              <input type="text" placeholder="Mobile Money Number" className="input" value={mobileMoney} onChange={e => setMobileMoney(e.target.value)} required />
+            {withdrawalMethod === 'mobile' && (
+              <input placeholder="Mobile Money Number" className="input" value={mobileMoney} onChange={e => setMobileMoney(e.target.value)} />
             )}
+            <button onClick={saveWithdrawal} className="btn-primary">Save Withdrawal Method</button>
           </div>
-          <button onClick={handleSubmitVerification} disabled={uploading} className="btn-primary w-full">
-            {uploading ? 'Submitting...' : 'Submit Verification'}
-          </button>
-        </div>
+        )}
       </div>
     </ProtectedRoute>
   );
