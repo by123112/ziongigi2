@@ -9,22 +9,41 @@ export default function RegisterSeller() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const router = useRouter();
 
+  const validatePassword = (pwd) => {
+    const minLength = 8;
+    const hasUpper = /[A-Z]/.test(pwd);
+    const hasLower = /[a-z]/.test(pwd);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
+    return pwd.length >= minLength && hasUpper && hasLower && hasSpecial;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
     if (!acceptedTerms) {
       setError('You must accept the Terms & Policies.');
       return;
     }
-    setLoading(true);
-    setError('');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (!validatePassword(password)) {
+      setError('Password must be at least 8 characters, include uppercase, lowercase, and a special character.');
+      return;
+    }
 
-    // 1. Sign up with Supabase Auth
+    setLoading(true);
+
+    // Sign up with Supabase Auth
     const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
     if (signUpError) {
       setError(signUpError.message);
@@ -39,7 +58,7 @@ export default function RegisterSeller() {
       return;
     }
 
-    // 2. Insert profile with basic info (trigger will also create row, but we upsert)
+    // Insert profile with basic info
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: userId,
       full_name: fullName,
@@ -72,11 +91,12 @@ export default function RegisterSeller() {
           <input type="text" placeholder="Username *" className="input" value={username} onChange={e => setUsername(e.target.value)} required />
           <input type="email" placeholder="Email Address *" className="input" value={email} onChange={e => setEmail(e.target.value)} required />
           <input type="tel" placeholder="Phone Number *" className="input" value={phone} onChange={e => setPhone(e.target.value)} required />
-          <input type="password" placeholder="Password *" className="input" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+          <input type="password" placeholder="Password *" className="input" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input type="password" placeholder="Confirm Password *" className="input" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
           <div className="flex items-start">
             <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
             <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
-              I agree to the <a href="/terms" target="_blank" className="text-indigo-600">Terms of Service</a>, <a href="/privacy" target="_blank" className="text-indigo-600">Privacy Policy</a>, <a href="/refund" target="_blank" className="text-indigo-600">Refund Policy</a> and <a href="/seller-agreement" target="_blank" className="text-indigo-600">Seller Agreement</a>
+              I agree to the <a href="/seller-agreement" target="_blank" className="text-indigo-600">Terms, Privacy, Refund Policy & Seller Agreement</a>
             </label>
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full">Register</button>
