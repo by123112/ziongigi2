@@ -27,6 +27,7 @@ export default function RegisterSeller() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     if (!acceptedTerms) {
       setError('You must accept the Terms & Policies.');
@@ -43,37 +44,22 @@ export default function RegisterSeller() {
 
     setLoading(true);
 
-    // Sign up with Supabase Auth
-    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          username: username,
+          phone: phone,
+        },
+      },
+    });
+
     if (signUpError) {
       setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    const userId = data.user?.id;
-    if (!userId) {
-      setError('User ID missing. Try again.');
-      setLoading(false);
-      return;
-    }
-
-    // Insert profile with basic info
-    const { error: profileError } = await supabase.from('profiles').upsert({
-      id: userId,
-      full_name: fullName,
-      username,
-      phone,
-      role: 'seller',
-      verification_status: 'pending',
-      legal_accepted: true,
-    }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error(profileError);
-      setError('Account created but profile error. Contact support.');
     } else {
-      setSuccess('Account created! Please verify your email. After verification, log in to complete your seller profile.');
+      setSuccess('Account created! Please verify your email. After confirmation, log in to complete your seller profile.');
       setTimeout(() => router.push('/login'), 5000);
     }
     setLoading(false);
