@@ -44,10 +44,16 @@ export default function RegisterSeller() {
 
     setLoading(true);
 
+    // Determine the redirect URL dynamically based on environment
+    const redirectUrl = process.env.NODE_ENV === 'production'
+      ? 'https://zion-gigi.vercel.app/auth/callback'
+      : 'http://localhost:3000/auth/callback';
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
           username: username,
@@ -59,7 +65,7 @@ export default function RegisterSeller() {
     if (signUpError) {
       setError(signUpError.message);
     } else {
-      setSuccess('Account created! Please verify your email. After confirmation, log in to complete your seller profile.');
+      setSuccess('Account created! Please check your email (including spam) to confirm your account.');
       setTimeout(() => router.push('/login'), 5000);
     }
     setLoading(false);
