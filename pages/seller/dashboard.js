@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/router';
 import ProtectedRoute from '../../components/ProtectedRoute';
+import Link from 'next/link';
 
 export default function SellerDashboard() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function SellerDashboard() {
         if (data?.city) setCity(data.city);
         if (data?.address) setAddress(data.address);
         if (data?.withdrawal_method) {
-          // prefill withdrawal method if exists
+          // Prefill withdrawal method if exists
         }
       }
       setLoading(false);
@@ -52,18 +53,15 @@ export default function SellerDashboard() {
     fetchProfile();
   }, []);
 
-  // Send phone OTP
+  // Simulate sending phone OTP – replace with actual Twilio API
   const sendPhoneOtp = async () => {
-    // This requires a backend endpoint. For demo, we'll simulate.
-    // In production, use Twilio or similar.
-    alert('Simulated: OTP sent to ' + profile?.phone);
+    alert(`Demo: OTP sent to ${profile?.phone} (use code 123456)`);
     setPhoneOtpSent(true);
   };
 
   const verifyPhoneOtp = async () => {
     setVerifyingPhone(true);
-    // Simulate verification – in real app, call your API
-    if (phoneOtpCode === '123456') { // demo code
+    if (phoneOtpCode === '123456') {
       await supabase.from('profiles').update({ phone_verified: true }).eq('id', profile.id);
       setProfile({ ...profile, phone_verified: true });
       setMessage('Phone verified!');
@@ -133,10 +131,14 @@ export default function SellerDashboard() {
   if (profile.verification_status === 'approved') {
     return (
       <ProtectedRoute allowedRoles={['seller']}>
-        <div className="p-8">
-          <h1 className="text-3xl font-bold">Seller Dashboard</h1>
-          <p className="mt-2">Your account is verified. You can now upload products.</p>
-          <Link href="/seller/products" className="btn-primary mt-4 inline-block">Manage Products</Link>
+        <div className="min-h-screen bg-gray-50 py-8 px-4">
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-3xl font-bold mb-6">Seller Dashboard</h1>
+            <div className="bg-green-100 p-4 rounded-lg mb-6">
+              ✅ Your account is verified. You can now list products.
+            </div>
+            <Link href="/seller/products" className="btn-primary">Manage Products</Link>
+          </div>
         </div>
       </ProtectedRoute>
     );
@@ -145,9 +147,9 @@ export default function SellerDashboard() {
   return (
     <ProtectedRoute allowedRoles={['seller']}>
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-4">Seller Verification</h1>
+        <h1 className="text-2xl font-bold mb-4">Complete Your Seller Profile</h1>
         {message && <div className="bg-green-100 p-3 rounded mb-4">{message}</div>}
-        <div className="flex border-b mb-6">
+        <div className="flex border-b mb-6 flex-wrap">
           <button className={`px-4 py-2 ${activeTab === 'basic' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('basic')}>Basic Info</button>
           <button className={`px-4 py-2 ${activeTab === 'phone' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('phone')}>Phone Verification</button>
           <button className={`px-4 py-2 ${activeTab === 'address' ? 'border-b-2 border-indigo-600 text-indigo-600' : ''}`} onClick={() => setActiveTab('address')}>Address</button>
