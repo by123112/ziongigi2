@@ -16,6 +16,7 @@ export default function RegisterSeller() {
   const [success, setSuccess] = useState('');
   const router = useRouter();
 
+  // Password validation: at least 8 chars, one uppercase, one lowercase, one special char
   const validatePassword = (pwd) => {
     const minLength = 8;
     const hasUpper = /[A-Z]/.test(pwd);
@@ -44,10 +45,11 @@ export default function RegisterSeller() {
 
     setLoading(true);
 
-    // Determine the redirect URL dynamically based on environment
-    const redirectUrl = process.env.NODE_ENV === 'production'
-      ? 'https://zion-gigi.vercel.app/auth/callback'
-      : 'http://localhost:3000/auth/callback';
+    // Determine redirect URL based on environment
+    const redirectUrl =
+      process.env.NODE_ENV === 'production'
+        ? 'https://ziongigi2.vercel.app/auth/callback'
+        : 'http://localhost:3000/auth/callback';
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
@@ -79,21 +81,75 @@ export default function RegisterSeller() {
         {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm my-4">{error}</div>}
         {success && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm my-4">{success}</div>}
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <input type="text" placeholder="Full Name *" className="input" value={fullName} onChange={e => setFullName(e.target.value)} required />
-          <input type="text" placeholder="Username *" className="input" value={username} onChange={e => setUsername(e.target.value)} required />
-          <input type="email" placeholder="Email Address *" className="input" value={email} onChange={e => setEmail(e.target.value)} required />
-          <input type="tel" placeholder="Phone Number *" className="input" value={phone} onChange={e => setPhone(e.target.value)} required />
-          <input type="password" placeholder="Password *" className="input" value={password} onChange={e => setPassword(e.target.value)} required />
-          <input type="password" placeholder="Confirm Password *" className="input" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+          <input
+            type="text"
+            placeholder="Full Name *"
+            className="input"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Username *"
+            className="input"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+          <input
+            type="email"
+            placeholder="Email Address *"
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="tel"
+            placeholder="Phone Number *"
+            className="input"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password *"
+            className="input"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Confirm Password *"
+            className="input"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
           <div className="flex items-start">
-            <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
+            <input
+              type="checkbox"
+              id="terms"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+            />
             <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
-              I agree to the <a href="/seller-agreement" target="_blank" className="text-indigo-600">Terms, Privacy, Refund Policy & Seller Agreement</a>
+              I agree to the{' '}
+              <a href="/seller-agreement" target="_blank" className="text-indigo-600">
+                Terms, Privacy, Refund Policy & Seller Agreement
+              </a>
             </label>
           </div>
-          <button type="submit" disabled={loading} className="btn-primary w-full">Register</button>
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? 'Creating account...' : 'Register as Seller'}
+          </button>
         </form>
-        <p className="text-center text-sm mt-4">Already have an account? <Link href="/login" className="text-indigo-600">Log in</Link></p>
+        <p className="text-center text-sm mt-4">
+          Already have an account? <Link href="/login" className="text-indigo-600">Log in</Link>
+        </p>
       </div>
     </div>
   );
